@@ -13,14 +13,13 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 
 
 def reminder_keyboard() -> InlineKeyboardMarkup:
-    buttons = [
-        [
-            InlineKeyboardButton("15 минут", callback_data="remind_15"),
-            InlineKeyboardButton("30 минут", callback_data="remind_30"),
-        ],
-        [
-            InlineKeyboardButton("60 минут", callback_data="remind_60"),
-            InlineKeyboardButton("120 минут", callback_data="remind_120"),
-        ],
-    ]
-    return InlineKeyboardMarkup(buttons)
+    rows = []
+    for hour in range(1, 25, 2):
+        row = [InlineKeyboardButton(f"{hour} ч", callback_data=f"remind_{hour}")]
+        if hour + 1 <= 24:
+            row.append(
+                InlineKeyboardButton(f"{hour + 1} ч", callback_data=f"remind_{hour + 1}")
+            )
+        rows.append(row)
+
+    return InlineKeyboardMarkup(rows)

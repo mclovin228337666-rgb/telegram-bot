@@ -28,7 +28,6 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    await application.bot.delete_webhook()
     scheduler.shutdown(wait=False)
     await application.stop()
     await application.shutdown()
@@ -46,19 +45,6 @@ async def root():
 async def webhook(request: Request):
     data = await request.json()
     logger.info("Incoming webhook data: %s", data)
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return {"ok": True}
-
-
-@app.get("/")
-async def root():
-    return {"status": "ok"}
-
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    data = await request.json()
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return {"ok": True}

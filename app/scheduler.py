@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -10,42 +11,63 @@ from app.database import (
     save_reminder_log,
 )
 
-scheduler = AsyncIOScheduler()
+
+LOCAL_TZ = ZoneInfo("Europe/Moscow")
+
+scheduler = AsyncIOScheduler(timezone=LOCAL_TZ)
 
 
 async def check_shifts() -> None:
-    now = datetime.now().replace(second=0, microsecond=0)
-    users = await get_all_users_with_shifts()
+    now = datetime.now(LOCAL_TZ).replace(second=0, microsecond=0)
     today = now.date().isoformat()
+
+    users = await get_all_users_with_shifts()
 
     for user in users:
         upcoming_shifts = await get_employee_upcoming_shifts(user["employee_id"], today)
 
         for shift in upcoming_shifts:
-            shift_dt = datetime.fromisoformat(f"{shift['shift_date']} {shift['start_time']}:00")
+            shift_dt = datetime.fromisoformat(
+                f"{shift['shift_date']} {shift['start_time']}:00"
+            ).replace(tzinfo=LOCAL_TZ)
+
             remind_at = shift_dt - timedelta(minutes=user["remind_minutes"])
 
             if remind_at <= now < remind_at + timedelta(minutes=1):
                 reminder_key = remind_at.isoformat(timespec="minutes")
+
                 already_sent = await reminder_already_sent(
-                    user["telegram_id"], shift["id"], reminder_key
+                    user["telegram_id"],
+                    shift["id"],
+                    reminder_key,
                 )
                 if already_sent:
                     continue
 
                 text = (
-                    "⏰ Напоминание о смене\n"
+                    " Напоминание о смене\n"
                     f"Сотрудник: {user['full_name']}\n"
                     f"Дата: {shift['shift_date']}\n"
                     f"Время: {shift['start_time']}–{shift['end_time']}"
                 )
+
                 if shift.get("role"):
                     text += f"\nДолжность: {shift['role']}"
 
                 await send_message(user["telegram_id"], text)
-                await save_reminder_log(user["telegram_id"], shift["id"], reminder_key)
+                await save_reminder_log(
+                    user["telegram_id"],
+                    shift["id"],
+                    reminder_key,
+                )
 
 
 def start_scheduler() -> None:
-    scheduler.add_job(check_shifts, "interval", minutes=1, id="check_shifts", replace_existing=True)
+    scheduler.add_job(
+        check_shifts,
+        "interval",
+        minutes=1,
+        id="check_shifts",
+        replace_existing=True,
+    )
     scheduler.start()

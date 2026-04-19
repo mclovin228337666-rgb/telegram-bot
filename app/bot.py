@@ -40,10 +40,6 @@ def format_shift_list(shifts: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def send_main_menu(update: Update, text: str) -> None:
-    await update.message.reply_text(text, reply_markup=main_menu_keyboard())
-
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     await upsert_user(telegram_id)
@@ -51,9 +47,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     profile = await get_user_profile(telegram_id)
 
     if profile and profile.get("employee_id"):
+        hours = profile["remind_minutes"] // 60
         await update.message.reply_text(
             f"Привет, {profile['full_name']}!\n"
-            f"Текущее напоминание: за {profile['remind_minutes']} минут до смены.",
+            f"Текущее напоминание: за {hours} ч до смены.",
             reply_markup=main_menu_keyboard(),
         )
         return
@@ -102,16 +99,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if text == "Напоминание":
         await update.message.reply_text(
-            "Выбери, за сколько времени напоминать перед каждой сменой:",
+            "Выбери, за сколько часов напоминать перед каждой сменой:",
             reply_markup=reminder_keyboard(),
         )
         return
 
     if text == "Сменить ФИО":
         await set_waiting_for_name(telegram_id, True)
-        await update.message.reply_text(
-            "Хорошо. Введи ФИО полностью заново."
-        )
+        await update.message.reply_text("Хорошо. Введи ФИО полностью заново.")
         return
 
     waiting = await is_waiting_for_name(telegram_id)
@@ -149,7 +144,8 @@ async def reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.answer()
 
     telegram_id = query.from_user.id
-    minutes = int(query.data.split("_")[1])
+    hours = int(query.data.split("_")[1])
+    minutes = hours * 60
 
     await upsert_user(telegram_id)
     await set_user_reminder_minutes(telegram_id, minutes)
@@ -158,7 +154,7 @@ async def reminder_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     full_name = profile["full_name"] if profile and profile.get("full_name") else "сотрудник"
 
     await query.message.reply_text(
-        f"Готово. Для {full_name} напоминание установлено за {minutes} минут до каждой смены.",
+        f"Готово. Для {full_name} напоминание установлено за {hours} ч до каждой смены.",
         reply_markup=main_menu_keyboard(),
     )
 

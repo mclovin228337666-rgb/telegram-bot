@@ -163,7 +163,7 @@ SCHEDULE_ROWS = [
     {
     "full_name": "Суворова Дарья Евгеньевна",
     "shift_date": "2026-04-19",
-    "start_time": "20:10",
+    "start_time": "20:30",
     "end_time": "21:10",
     "role": "ТЕСТ",
     "department": "Тестовая смена",

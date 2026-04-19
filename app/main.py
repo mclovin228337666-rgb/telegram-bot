@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, Request
 from telegram import Update
@@ -8,6 +9,9 @@ from app.config import WEBHOOK_URL
 from app.database import init_db, replace_month_schedule
 from app.schedule_seed import SCHEDULE_MONTH, SCHEDULE_ROWS, SCHEDULE_YEAR
 from app.scheduler import scheduler, start_scheduler
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -20,6 +24,7 @@ async def lifespan(app: FastAPI):
 
     start_scheduler()
     await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    logger.info("Webhook set to %s/webhook", WEBHOOK_URL)
 
     yield
 
@@ -30,6 +35,20 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/")
+async def root():
+    return {"status": "ok"}
+
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.json()
+    logger.info("Incoming webhook data: %s", data)
+    update = Update.de_json(data, application.bot)
+    await application.process_update(update)
+    return {"ok": True}
 
 
 @app.get("/")

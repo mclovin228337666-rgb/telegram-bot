@@ -1055,8 +1055,8 @@ SCHEDULE_ROWS = [
     {
         "full_name": "Старых Дарья Германовна",
         "shift_date": "2026-04-09",
-        "start_time": "10:00",
-        "end_time": "22:00",
+        "start_time": "22:10",
+        "end_time": "23:00",
         "role": "Администратор магазина",
         "department": "м-н Академ-парк ZR-3 (СПб)",
     },

@@ -1,5 +1,4 @@
 import aiosqlite
-from datetime import date
 from typing import Any
 
 DB_NAME = "bot.db"
@@ -9,17 +8,14 @@ async def init_db() -> None:
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("PRAGMA foreign_keys = ON")
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS employees (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 full_name TEXT NOT NULL UNIQUE
             )
-            """
-        )
+        """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
                 employee_id INTEGER,
@@ -27,11 +23,9 @@ async def init_db() -> None:
                 waiting_for_name INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
             )
-            """
-        )
+        """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS shifts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 employee_id INTEGER NOT NULL,
@@ -40,14 +34,11 @@ async def init_db() -> None:
                 end_time TEXT NOT NULL,
                 role TEXT,
                 department TEXT,
-                UNIQUE(employee_id, shift_date, start_time, end_time, COALESCE(role, ''), COALESCE(department, '')),
                 FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
             )
-            """
-        )
+        """)
 
-        await db.execute(
-            """
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS reminder_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER NOT NULL,
@@ -55,8 +46,7 @@ async def init_db() -> None:
                 reminder_for_datetime TEXT NOT NULL,
                 UNIQUE(telegram_id, shift_id, reminder_for_datetime)
             )
-            """
-        )
+        """)
 
         await db.commit()
 
@@ -67,14 +57,11 @@ def normalize_name(name: str) -> str:
 
 async def upsert_user(telegram_id: int) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
+        await db.execute("""
             INSERT INTO users (telegram_id)
             VALUES (?)
             ON CONFLICT(telegram_id) DO NOTHING
-            """,
-            (telegram_id,),
-        )
+        """, (telegram_id,))
         await db.commit()
 
 
@@ -99,18 +86,17 @@ async def is_waiting_for_name(telegram_id: int) -> bool:
 
 async def get_user_profile(telegram_id: int) -> dict[str, Any] | None:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT u.telegram_id, u.employee_id, u.remind_minutes, u.waiting_for_name, e.full_name
             FROM users u
             LEFT JOIN employees e ON e.id = u.employee_id
             WHERE u.telegram_id = ?
-            """,
-            (telegram_id,),
-        )
+        """, (telegram_id,))
         row = await cursor.fetchone()
+
         if not row:
             return None
+
         return {
             "telegram_id": row[0],
             "employee_id": row[1],
@@ -122,14 +108,11 @@ async def get_user_profile(telegram_id: int) -> dict[str, Any] | None:
 
 async def set_user_employee(telegram_id: int, employee_id: int) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
+        await db.execute("""
             UPDATE users
             SET employee_id = ?, waiting_for_name = 0
             WHERE telegram_id = ?
-            """,
-            (employee_id, telegram_id),
-        )
+        """, (employee_id, telegram_id))
         await db.commit()
 
 
@@ -149,6 +132,7 @@ async def add_employee(full_name: str) -> int:
             (full_name.strip(),),
         )
         await db.commit()
+
         cursor = await db.execute(
             "SELECT id FROM employees WHERE full_name = ?",
             (full_name.strip(),),
@@ -159,12 +143,15 @@ async def add_employee(full_name: str) -> int:
 
 async def find_employee_by_name(name: str) -> tuple[int, str] | None:
     normalized = normalize_name(name)
+
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("SELECT id, full_name FROM employees")
         rows = await cursor.fetchall()
+
         for employee_id, full_name in rows:
             if normalize_name(full_name) == normalized:
                 return int(employee_id), str(full_name)
+
         return None
 
 
@@ -186,6 +173,7 @@ async def replace_month_schedule(year: int, month: int, schedule_rows: list[dict
 
         employee_ids_cursor = await db.execute("SELECT id FROM employees")
         employee_ids = [r[0] for r in await employee_ids_cursor.fetchall()]
+
         if employee_ids:
             placeholders = ",".join("?" for _ in employee_ids)
             await db.execute(
@@ -201,39 +189,34 @@ async def replace_month_schedule(year: int, month: int, schedule_rows: list[dict
             employee_row = await cur.fetchone()
             employee_id = employee_row[0]
 
-            await db.execute(
-                """
-                INSERT OR IGNORE INTO shifts (
+            await db.execute("""
+                INSERT INTO shifts (
                     employee_id, shift_date, start_time, end_time, role, department
                 ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    employee_id,
-                    row["shift_date"],
-                    row["start_time"],
-                    row["end_time"],
-                    row.get("role", ""),
-                    row.get("department", ""),
-                ),
-            )
+            """, (
+                employee_id,
+                row["shift_date"],
+                row["start_time"],
+                row["end_time"],
+                row.get("role", ""),
+                row.get("department", ""),
+            ))
 
         await db.commit()
 
 
 async def get_user_shifts_for_date(telegram_id: int, shift_date: str) -> list[dict[str, Any]]:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT s.id, e.full_name, s.shift_date, s.start_time, s.end_time, s.role, s.department
             FROM shifts s
             JOIN employees e ON e.id = s.employee_id
             JOIN users u ON u.employee_id = e.id
             WHERE u.telegram_id = ? AND s.shift_date = ?
             ORDER BY s.start_time
-            """,
-            (telegram_id, shift_date),
-        )
+        """, (telegram_id, shift_date))
         rows = await cursor.fetchall()
+
         return [
             {
                 "id": row[0],
@@ -250,18 +233,16 @@ async def get_user_shifts_for_date(telegram_id: int, shift_date: str) -> list[di
 
 async def get_user_month_shifts(telegram_id: int) -> list[dict[str, Any]]:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT s.id, e.full_name, s.shift_date, s.start_time, s.end_time, s.role, s.department
             FROM shifts s
             JOIN employees e ON e.id = s.employee_id
             JOIN users u ON u.employee_id = e.id
             WHERE u.telegram_id = ?
             ORDER BY s.shift_date, s.start_time
-            """,
-            (telegram_id,),
-        )
+        """, (telegram_id,))
         rows = await cursor.fetchall()
+
         return [
             {
                 "id": row[0],
@@ -278,14 +259,13 @@ async def get_user_month_shifts(telegram_id: int) -> list[dict[str, Any]]:
 
 async def get_all_users_with_shifts() -> list[dict[str, Any]]:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT u.telegram_id, u.remind_minutes, e.id, e.full_name
             FROM users u
             JOIN employees e ON e.id = u.employee_id
-            """
-        )
+        """)
         rows = await cursor.fetchall()
+
         return [
             {
                 "telegram_id": row[0],
@@ -299,16 +279,14 @@ async def get_all_users_with_shifts() -> list[dict[str, Any]]:
 
 async def get_employee_upcoming_shifts(employee_id: int, from_date: str) -> list[dict[str, Any]]:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT id, shift_date, start_time, end_time, role, department
             FROM shifts
             WHERE employee_id = ? AND shift_date >= ?
             ORDER BY shift_date, start_time
-            """,
-            (employee_id, from_date),
-        )
+        """, (employee_id, from_date))
         rows = await cursor.fetchall()
+
         return [
             {
                 "id": row[0],
@@ -324,24 +302,18 @@ async def get_employee_upcoming_shifts(employee_id: int, from_date: str) -> list
 
 async def reminder_already_sent(telegram_id: int, shift_id: int, reminder_for_datetime: str) -> bool:
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            """
+        cursor = await db.execute("""
             SELECT 1
             FROM reminder_logs
             WHERE telegram_id = ? AND shift_id = ? AND reminder_for_datetime = ?
-            """,
-            (telegram_id, shift_id, reminder_for_datetime),
-        )
+        """, (telegram_id, shift_id, reminder_for_datetime))
         return await cursor.fetchone() is not None
 
 
 async def save_reminder_log(telegram_id: int, shift_id: int, reminder_for_datetime: str) -> None:
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
+        await db.execute("""
             INSERT OR IGNORE INTO reminder_logs (telegram_id, shift_id, reminder_for_datetime)
             VALUES (?, ?, ?)
-            """,
-            (telegram_id, shift_id, reminder_for_datetime),
-        )
+        """, (telegram_id, shift_id, reminder_for_datetime))
         await db.commit()
